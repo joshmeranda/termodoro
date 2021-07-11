@@ -7,6 +7,8 @@ import time
 
 NANO_PER_SECOND = 1_000_000_000
 
+REFRESH_RATE = .1
+
 
 @dataclasses.dataclass
 class Coordinate:
@@ -60,21 +62,6 @@ class Clock:
 
         return max(0, math.ceil((self.__nano_seconds - elapsed) / NANO_PER_SECOND))
 
-    @staticmethod
-    def __clock_coordinates(diameter: int) -> list[Coordinate]:
-        radius = diameter // 2
-        coords = [Coordinate(radius, radius)]
-        tolerance = .5
-
-        for y in range(diameter + 1):
-            for x in range(diameter + 1):
-                distance = math.sqrt((x - radius) ** 2 + (y - radius) ** 2)
-
-                if radius - tolerance < distance < radius + tolerance:
-                    coords.append(Coordinate(x, y))
-
-        return coords
-
     def __hand_coordinates(self, diameter: int) -> list[Coordinate]:
         radius = diameter // 2
 
@@ -110,12 +97,28 @@ class Clock:
                 centered_y = radius - y
 
                 if ((slope == math.nan or centered_y - tolerance < centered_x * slope < centered_y + tolerance) and
-                        self.__center_distance(x, y, radius) < radius * self.__hand_length + .5):
+                        Clock.__center_distance(x, y, radius) < radius * self.__hand_length + .5):
                     coords.append(Coordinate(x, y))
 
         return coords
 
-    def __center_distance(self, x: int, y: int, radius: int) -> float:
+    @staticmethod
+    def __clock_coordinates(diameter: int) -> list[Coordinate]:
+        radius = diameter // 2
+        coords = [Coordinate(radius, radius)]
+        tolerance = .5
+
+        for y in range(diameter + 1):
+            for x in range(diameter + 1):
+                distance = math.sqrt((x - radius) ** 2 + (y - radius) ** 2)
+
+                if radius - tolerance < distance < radius + tolerance:
+                    coords.append(Coordinate(x, y))
+
+        return coords
+
+    @staticmethod
+    def __center_distance(x: int, y: int, radius: int) -> float:
         return math.sqrt((x - radius) ** 2 + (y - radius) ** 2)
 
     @staticmethod
@@ -148,20 +151,18 @@ class Clock:
 
 
 class SessionState:
-    """Tracks the session state."""
+    """Tracks the session state, all duration parameters are in minutes and accessors return the seconds."""
 
     def __init__(self, work_duration: int, short_duration: int, long_duration: int, before_long: int):
         self.__before_long = before_long
 
-        self.__work_duration = work_duration
-        self.__short_duration = long_duration
-        self.__long_duration = short_duration
+        self.__work_duration = work_duration * 60
+        self.__short_duration = long_duration * 60
+        self.__long_duration = short_duration * 60
 
-        self.__round = 1
+        self.__round = 0
 
     def get_work(self) -> int:
-        self.__round += 1
-
         return self.__work_duration
 
     def get_break(self) -> int:
@@ -172,14 +173,16 @@ class SessionState:
 
     def next_long(self) -> int:
         """Get the amount of work rounds until the next long break."""
-        if self.__before_long > self.__round:
-            return self.__before_long - self.__round
-        else:
-            return self.__round % self.__before_long
+        with open("out", "a") as f:
+            f.write(f"{self.__before_long} - {self.__round} - ({self.__round} // {self.__before_long} * {self.__before_long})\n")
+        return self.__before_long - (self.__round - self.__round // self.__before_long * self.__before_long)
 
     def completed(self) -> int:
         """Get the amount of completed work periods."""
-        return self.__round - 1
+        return self.__round
+
+    def increment(self):
+        self.__round += 1
 
 
 class SessionDisplay:
@@ -204,7 +207,7 @@ class SessionDisplay:
         self.__bg_color = bg_color
 
     def redraw(self, clock: Clock, state: SessionState):
-        # todo: need a better display policy for handling smaller screns
+        # todo: need a better display policy for handling smaller screens
         #   drop the clock or info lines first?
         self.__screen.clear()
 
@@ -232,7 +235,7 @@ class SessionDisplay:
 
         if self.__show_next_long:
             self.__screen.addstr(y_padding, x_padding,
-                                 f"Next long break in {state.next_long()} round{'s' if state.next_long() > 1 else ''}")
+                                 f"Next long break in {state.next_long()} round{'s' if state.next_long() != 1 else ''}")
             y_padding += 1
 
         if self.__show_digital:
@@ -266,18 +269,29 @@ def main(screen):
     clock = Clock(30, .5)
     state = SessionState(25, 5, 15, 4)
 
-    try:
-        while True:
-            # try:
-            display.redraw(clock, state)
-            # except curses.error:
-            #     continue
-            time.sleep(.1)
-    except KeyboardInterrupt:
-        pass
+    is_working = True
+
+    while True:
+        # duration: int = state.get_work() if is_working else state.get_break()
+        duration = 1
+        clock.set_duration(duration)
+
+        while not clock.is_done():
+            try:
+                display.redraw(clock, state)
+                time.sleep(REFRESH_RATE)
+            except curses.error:
+                pass  # todo: notify user / log curses error
+
+        if is_working:
+            state.increment()
+        
+        is_working = not is_working
+        clock.reset()
 
 
 if __name__ == "__main__":
-    # main(None)
-    curses.wrapper(main)
-
+    try:
+        curses.wrapper(main)
+    except KeyboardInterrupt:
+        pass
