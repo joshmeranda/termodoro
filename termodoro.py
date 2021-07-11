@@ -18,30 +18,26 @@ class Coordinate:
 class Clock:
     """Represents the main clock.
 
-    :param diameter: the diameter of the clock.
     :param seconds: the duration of the clock in seconds.
     :param hand_length: the length of the hand in proportion to the clock radius (.5 is half the radius). If
         hand_length > 1, the value 1 is used
     """
 
-    def __init__(self, diameter: int, seconds: int, hand_length: float = .5):
-        self.diameter = diameter
-        self.__radius = diameter // 2
-
+    def __init__(self, seconds: int, hand_length: float = .5):
         self.__start_time = time.time_ns()
         self.__nano_seconds = seconds * NANO_PER_SECOND
 
         self.__hand_length = hand_length
 
-    def coordinates(self) -> list[Coordinate]:
+    def coordinates(self, diameter: int) -> list[Coordinate]:
         """Retrieve a list of the curses terminal locations to populate.
 
         :return: The list of terminal coordinates to populate.
         """
-        coords = self.__clock_coordinates()
+        coords = self.__clock_coordinates(diameter)
 
         if not self.is_done():
-            coords += self.__hand_coordinates()
+            coords += self.__hand_coordinates(diameter)
 
         return coords
 
@@ -64,20 +60,24 @@ class Clock:
 
         return max(0, math.ceil((self.__nano_seconds - elapsed) / NANO_PER_SECOND))
 
-    def __clock_coordinates(self) -> list[Coordinate]:
-        coords = [Coordinate(self.__radius, self.__radius)]
+    @staticmethod
+    def __clock_coordinates(diameter: int) -> list[Coordinate]:
+        radius = diameter // 2
+        coords = [Coordinate(radius, radius)]
         tolerance = .5
 
-        for y in range(self.diameter + 1):
-            for x in range(self.diameter + 1):
-                distance = math.sqrt((x - self.__radius) ** 2 + (y - self.__radius) ** 2)
+        for y in range(diameter + 1):
+            for x in range(diameter + 1):
+                distance = math.sqrt((x - radius) ** 2 + (y - radius) ** 2)
 
-                if self.__radius - tolerance < distance < self.__radius + tolerance:
+                if radius - tolerance < distance < radius + tolerance:
                     coords.append(Coordinate(x, y))
 
         return coords
 
-    def __hand_coordinates(self) -> list[Coordinate]:
+    def __hand_coordinates(self, diameter: int) -> list[Coordinate]:
+        radius = diameter // 2
+
         time_elapsed = time.time_ns() - self.__start_time
         percent_elapsed = min(time_elapsed / self.__nano_seconds, 1.0)
 
@@ -85,38 +85,38 @@ class Clock:
 
         # find the ranges to limit the search to the proper quadrant
         if percent_elapsed <= .25 or percent_elapsed == 1:
-            y_range = range(0, self.__radius + 1)
-            x_range = range(self.__radius, self.diameter + 1)
+            y_range = range(0, radius + 1)
+            x_range = range(radius, diameter + 1)
         elif .25 < percent_elapsed <= .5:
-            y_range = range(self.__radius, self.diameter + 1)
-            x_range = range(self.__radius, self.diameter + 1)
+            y_range = range(radius, diameter + 1)
+            x_range = range(radius, diameter + 1)
         elif .5 < percent_elapsed <= .75:
-            y_range = range(self.__radius, self.diameter + 1)
-            x_range = range(0, self.__radius + 1)
+            y_range = range(radius, diameter + 1)
+            x_range = range(0, radius + 1)
         else:
-            y_range = range(0, self.__radius + 1)
-            x_range = range(0, self.__radius + 1)
+            y_range = range(0, radius + 1)
+            x_range = range(0, radius + 1)
 
         if slope == math.nan:
-            x_range = range(self.__radius, self.__radius + 1)
+            x_range = range(radius, radius + 1)
 
         tolerance = abs(slope) if abs(slope) > .5 else .5
         coords = list()
 
         for x in x_range:
-            centered_x = x - self.__radius
+            centered_x = x - radius
 
             for y in y_range:
-                centered_y = self.__radius - y
+                centered_y = radius - y
 
                 if ((slope == math.nan or centered_y - tolerance < centered_x * slope < centered_y + tolerance) and
-                        self.__center_distance(x, y) < self.__radius * self.__hand_length + .5):
+                        self.__center_distance(x, y, radius) < radius * self.__hand_length + .5):
                     coords.append(Coordinate(x, y))
 
         return coords
 
-    def __center_distance(self, x, y) -> float:
-        return math.sqrt((x - self.__radius) ** 2 + (y - self.__radius) ** 2)
+    def __center_distance(self, x: int, y: int, radius: int) -> float:
+        return math.sqrt((x - radius) ** 2 + (y - radius) ** 2)
 
     @staticmethod
     def __get_slope(percent_elapsed: float) -> float:
@@ -203,9 +203,9 @@ class SessionDisplay:
         y_padding = 0
 
         if self.__show_analog:
-            x_padding = clock.diameter
+            x_padding = 50  # clock.diameter
 
-            for coord in clock.coordinates():
+            for coord in clock.coordinates(50):
                 self.__screen.addch(coord.y, coord.x, ' ', curses.color_pair(1))
 
         if self.__show_completed:
@@ -244,7 +244,7 @@ def main(screen):
 
     display = SessionDisplay(screen)
 
-    clock = Clock(50, 5, .5)
+    clock = Clock(5, .5)
     state = SessionState(25, 5, 15, 4)
 
     try:
