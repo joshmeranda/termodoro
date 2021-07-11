@@ -183,7 +183,14 @@ class SessionState:
 
 
 class SessionDisplay:
-    __MIN_CLOCK_DIAMETER = 5
+    # this is the minimal clock diameter that is still recognizable and
+    # usable as a clock.
+    __MIN_CLOCK_DIAMETER = 4
+
+    # the smallest width of the screen to fit teh clock and text
+    # todo: does not take into account whether or not there is any information text displayed
+    __MIN_SCREEN_WIDTH = 30 + __MIN_CLOCK_DIAMETER
+    __MIN_SCREEN_HEIGHT = __MIN_CLOCK_DIAMETER + 1
 
     def __init__(self, screen, show_completed: bool = True, show_next_long: bool = True, show_digital: bool = True,
                  show_analog: bool = True, bg_color: str = 'white"'):
@@ -197,15 +204,26 @@ class SessionDisplay:
         self.__bg_color = bg_color
 
     def redraw(self, clock: Clock, state: SessionState):
+        # todo: need a better display policy for handling smaller screns
+        #   drop the clock or info lines first?
         self.__screen.clear()
+
+        (height, width) = self.__screen.getmaxyx()
+
+        if width < SessionDisplay.__MIN_SCREEN_WIDTH or height < SessionDisplay.__MIN_SCREEN_HEIGHT:
+            self.__screen.addstr(0, 0, "screen too small")
+            self.__screen.refresh()
+            return
+
+        clock_diameter = height - 1
 
         x_padding = 0
         y_padding = 0
 
         if self.__show_analog:
-            x_padding = 50  # clock.diameter
+            x_padding += clock_diameter + (2 if clock_diameter % 2 == 0 else 1)
 
-            for coord in clock.coordinates(50):
+            for coord in clock.coordinates(clock_diameter):
                 self.__screen.addch(coord.y, coord.x, ' ', curses.color_pair(1))
 
         if self.__show_completed:
@@ -213,7 +231,8 @@ class SessionDisplay:
             y_padding += 1
 
         if self.__show_next_long:
-            self.__screen.addstr(y_padding, x_padding, f"Next long break in {state.next_long()} round{'s' if state.next_long() > 1 else ''}")
+            self.__screen.addstr(y_padding, x_padding,
+                                 f"Next long break in {state.next_long()} round{'s' if state.next_long() > 1 else ''}")
             y_padding += 1
 
         if self.__show_digital:
@@ -244,12 +263,15 @@ def main(screen):
 
     display = SessionDisplay(screen)
 
-    clock = Clock(5, .5)
+    clock = Clock(30, .5)
     state = SessionState(25, 5, 15, 4)
 
     try:
         while True:
+            # try:
             display.redraw(clock, state)
+            # except curses.error:
+            #     continue
             time.sleep(.1)
     except KeyboardInterrupt:
         pass
