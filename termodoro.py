@@ -3,8 +3,9 @@ import dataclasses
 import configparser
 import curses
 import math
+import os
 import time
-
+import typing
 
 NANO_PER_SECOND = 1_000_000_000
 
@@ -19,6 +20,11 @@ SHOW_COMPLETED = ("display", "show-completed")
 SHOW_NEXT_LONG = ("display", "show-next-long")
 SHOW_DIGITAL = ("display", "show-digital")
 SHOW_ANALOG = ("display", "show-analog")
+
+CONFIG_PATHS = [
+    "/etc/termodoro.ini",
+    os.path.join(os.environ["HOME"], ".config/termodoro.ini")
+]
 
 
 @dataclasses.dataclass
@@ -271,7 +277,8 @@ class SessionDisplay:
 
 def main(screen):
     config = configparser.ConfigParser()
-    config.read("default.ini")
+
+    config.read(CONFIG_PATHS)
 
     work_duration = config.getint(*WORK_DURATION, fallback=30)
     short_duration = config.getint(*SHORT_DURATION, fallback=5)
@@ -316,4 +323,3 @@ if __name__ == "__main__":
         curses.wrapper(main)
     except KeyboardInterrupt:
         pass
-#
