@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import dataclasses
+import configparser
 import curses
 import math
 import time
@@ -8,6 +9,16 @@ import time
 NANO_PER_SECOND = 1_000_000_000
 
 REFRESH_RATE = .1
+
+WORK_DURATION = ("general", "work")
+SHORT_DURATION = ("general", "short-break")
+LONG_DURATION = ("general", "long-break")
+BEFORE_LONG = ("general", "before-long")
+
+SHOW_COMPLETED = ("display", "show-completed")
+SHOW_NEXT_LONG = ("display", "show-next-long")
+SHOW_DIGITAL = ("display", "show-digital")
+SHOW_ANALOG = ("display", "show-analog")
 
 
 @dataclasses.dataclass
@@ -20,7 +31,7 @@ class Coordinate:
 class Clock:
     """Represents the main clock.
 
-    :param seconds: the duration of the clock in seconds.
+    :param seconds: the initial duration of the clock in seconds.
     :param hand_length: the length of the hand in proportion to the clock radius (.5 is half the radius). If
         hand_length > 1, the value 1 is used
     """
@@ -196,15 +207,13 @@ class SessionDisplay:
     __MIN_SCREEN_HEIGHT = __MIN_CLOCK_DIAMETER + 1
 
     def __init__(self, screen, show_completed: bool = True, show_next_long: bool = True, show_digital: bool = True,
-                 show_analog: bool = True, bg_color: str = 'white"'):
+                 show_analog: bool = True):
         self.__screen = screen
 
         self.__show_completed = show_completed
         self.__show_next_long = show_next_long
         self.__show_digital = show_digital
         self.__show_analog = show_analog
-
-        self.__bg_color = bg_color
 
     def redraw(self, clock: Clock, state: SessionState):
         # todo: need a better display policy for handling smaller screens
@@ -261,19 +270,31 @@ class SessionDisplay:
 
 
 def main(screen):
+    config = configparser.ConfigParser()
+    config.read("default.ini")
+
+    work_duration = config.getint(*WORK_DURATION, fallback=30)
+    short_duration = config.getint(*SHORT_DURATION, fallback=5)
+    long_duration = config.getint(*LONG_DURATION, fallback=15)
+    before_long = config.getint(*BEFORE_LONG, fallback=4)
+
+    show_completed = config.getboolean(*SHOW_COMPLETED, fallback=True)
+    show_next_long = config.getboolean(*SHOW_NEXT_LONG, fallback=True)
+    show_digital = config.getboolean(*SHOW_DIGITAL, fallback=True)
+    show_analog = config.getboolean(*SHOW_ANALOG, fallback=True)
+
     curses.init_pair(1, curses.COLOR_WHITE, curses.COLOR_WHITE)
     screen.clear()
 
-    display = SessionDisplay(screen)
+    display = SessionDisplay(screen, show_completed, show_next_long, show_digital, show_analog)
 
-    clock = Clock(30, .5)
-    state = SessionState(25, 5, 15, 4)
+    state = SessionState(work_duration, short_duration, long_duration, before_long)
+    clock = Clock(0, .5)
 
     is_working = True
 
     while True:
-        # duration: int = state.get_work() if is_working else state.get_break()
-        duration = 1
+        duration: int = state.get_work() if is_working else state.get_break()
         clock.set_duration(duration)
 
         while not clock.is_done():
@@ -295,3 +316,4 @@ if __name__ == "__main__":
         curses.wrapper(main)
     except KeyboardInterrupt:
         pass
+#
