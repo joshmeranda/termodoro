@@ -5,7 +5,6 @@ import curses
 import math
 import os
 import time
-import typing
 
 NANO_PER_SECOND = 1_000_000_000
 
